@@ -1,0 +1,19 @@
+# Disable xon/xoff for ^q to work
+# Also add this to .bashrc
+# stty -ixon
+defflow off
+
+# Real men use ^a for something else
+escape ^Qq
+
+# Rename window with previous title already removed
+bind A eval "title ''" "title"
+
+# This one looks reasonably nice in both Solarized dark and light
+#caption always "%{BG} %?%-w%?%{wG}%n %t%{BG}%?%+w%?%{wG}%-017=%Y-%m-%d %c%="
+
+# This one is for the standard PuTTY color scheme
+caption always "%{kK} %?%-w%?%{kw}%n %t%{kK}%?%+w%?%{wK}%-017=%Y-%m-%d %c%="
+
+# Re-read config file
+bind R source ${HOME}/.screenrc

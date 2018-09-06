@@ -1,0 +1,1 @@
+/home/rebelm/git/dot_repounix/bash-git-prompt/gitprompt.sh

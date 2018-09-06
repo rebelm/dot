@@ -1,0 +1,17 @@
+[user]
+    name = Lars Jonsson
+    email = Lars.Jonsson@pjm.com
+
+[alias]
+    s = "status"
+    d = "diff"
+    a = "add"
+    b = "branch"
+    rv = "remote -v"
+    cm = "commit -m"
+    cob = "checkout -b"
+    com = "checkout master"
+    co = "checkout"
+    plm = "pull origin master"
+    psm = "push origin master"
+    lgp = "log --pretty=oneline"

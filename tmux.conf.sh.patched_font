@@ -1,0 +1,920 @@
+################################################
+# Begin Status Right
+status_right() {
+    local direction tmp
+    direction="${1}"  # 0 = pointing right, 1 = pointing left
+
+    local bg_1 fg_1 mode_1
+    local bg_2 fg_2 mode_2
+    local bg_3 fg_3 mode_3
+
+    #
+    # status-right size is based on terminal size
+    #
+    #        ljonsson@straub  14:04  2016-05-29
+    #     🌖  81˚F 51% 2(0)S   ⚡ ◼◼◼◼◼◼◼◼◼◼◻◻◻◻◻
+    #
+    #             ljonsson@straub  14:04 160529
+    #          🌖  81˚F 51% 2(0)S   ⚡ ◼◼◼◼◼◼◼◻◻◻
+    #
+    #                  ljonsson@straub    14:04
+    #               🌖  81˚F 51% 2(0)S   ⚡ ◼◼◼◻◻
+    #
+
+    bg_1="${BASE01}"
+    fg_1="${BRIGHTBLACK}"
+    mode_1="bold"
+
+    bg_2="${BASE01}"
+    fg_2="white"
+    mode_2="bold"
+
+    bg_3="${BRIGHTBLACK}"
+    fg_3="white"
+    mode_3="bold"
+
+    tmp=""
+
+    if [ $is_local -eq 0 ]
+    then
+        tmp="${tmp}$(cat ~/.tmux.conf.sh | bash -s arrow ${direction} normal ${status_bg} ${bg_2})#[bg=${bg_2} fg=${fg_2} ${mode_2}]"
+        tmp="${tmp} #(cat ~/.tmux.conf.sh | bash -s weather moonphase symbol)"
+        tmp="${tmp}#(cat ~/.tmux.conf.sh | bash -s weather temperature)˚F "
+        tmp="${tmp}#(cat ~/.tmux.conf.sh | bash -s weather humidity)%% "
+        tmp="${tmp}#(cat ~/.tmux.conf.sh | bash -s weather wind) "
+        tmp="${tmp}#(cat ~/.tmux.conf.sh | bash -s weather stormwatch) "
+        tmp="${tmp}$(arrow ${direction} normal ${bg_2} ${bg_3})#[bg=${bg_3} fg=${fg_3} ${mode_3}]"
+        tmp="${tmp} #(cat ~/.tmux.conf.sh | bash -s battery ${bg_3/\#/\\#}) "
+    else
+        tmp="${tmp}$(cat ~/.tmux.conf.sh | bash -s arrow ${direction} user ${status_bg} ${bg_2} left)#[bg=${bg_2} fg=${fg_2} ${mode_2}]"
+        tmp="${tmp}#[bg=#(cat ~/.tmux.conf.sh | bash -s determine_color ${direction} user ${fg_2/\#/\\#} ${bg_2/\#/\\#} left) fg=white ${mode_2}]"
+        tmp="${tmp} #(cat ~/.tmux.conf.sh | bash -s pane_title user_host)"
+        tmp="${tmp} $(arrow ${direction} user ${bg_2} ${bg_3} right)#[bg=${bg_3} fg=${fg_3} ${mode_3}]"
+        tmp="${tmp} #(cat ~/.tmux.conf.sh | bash -s _datetime) "
+    fi
+    ${tmux} set -g status-right "${tmp}"
+}
+
+arrow() {
+    local direction bgc fgc tmp side
+    direction="${1}"  # 0 = pointing right, 1 = pointing left, 2 = flat
+    type="${2}"
+    bgc="${3}"
+    fgc="${4}"
+    side="${5}"
+    [ ${direction} -eq 1 ] && bg="bg"       || bg="fg"
+    [ ${direction} -eq 1 ] && fg="fg"       || fg="bg"
+    [ ${direction} -eq 1 ] && arrow=''     || arrow=''
+    [ ${direction} -eq 1 ] && fletching='' || fletching=''
+    [ ${direction} -eq 2 ] && arrow=' '
+    if [ "${side}" == "left" ]
+    then
+        tmp="#[${fg}=$(determine_color ${direction} ${type} ${bgc} ${fgc}) ${bg}=${bgc} nobold]${arrow}"
+    else
+        tmp="#[${bg}=$(determine_color ${direction} ${type} ${bgc} ${bgc}) ${fg}=${fgc} nobold]${arrow}"
+    fi
+    echo "${tmp}"
+}
+
+determine_color() {
+    local foo
+    local bgc fgc
+    direction="${1}"
+    type="${2}"
+    bgc="${3}"
+    fgc="${4}"
+
+    if [ "${type}" == "user" ]
+    then
+        # Default user highlight if none specified in config file
+        bar=`(cat ~/.tmux_config | grep "^usercolor" || echo "usercolor @ ${fgc}") |
+        (foo="x"; while read line
+        do
+            echo ${line} | grep -q "^#" && continue
+            user=$(echo ${line} | awk '{print $2}')
+            color=$(echo ${line} | awk '{print $3}')
+            foo=$(echo ${foo} | sed "s/x/(echo #{pane_title} | grep -v -q '${user}' \&\& x || echo '${color}')/")
+        done
+        echo "#${foo}" | sed 's/x ||//' | sed "s/echo '${color}'/echo '${fgc}' || echo '${color}'/"
+        )`
+    else
+        bar="${bgc}"
+    fi
+    echo "${bar}"
+}
+
+pane_title() {
+    local type wsf local width
+    type=${1}
+    width=${2:-100}
+    if [ "${type}" == "user_host" ]
+    then
+        wsf="#(echo #{pane_title} | cut -d':' -f1 | cut -c1-${width})"
+    elif [ "${type}" == "host" ]
+    then
+        wsf="#{window_index}:#(echo #{pane_title} | cut -d':' -f1 | cut -d'@' -f2 | cut -c1-${width})"
+    else
+        wsf="xxx"
+    fi
+    echo "${wsf}"
+}
+# End Status Right
+################################################
+
+################################################
+# Begin Status Left
+status_left() {
+    local field_name1 field_number1 field_format1 field_condition1
+    local field_name2 field_number2 field_format2 field_condition2
+
+    field_name1="${1:-none}"         # Field name, used for identifying color variables
+    field_number1="${2:-none}"       # Field numbers starting with 1
+    field_format1="${3:-none}"       # Content of field, e.g "W:#{session_windows} P:#{window_panes}"
+    field_condition1="${4:-none}"    # Condition to toggle color on, client_prefix, window_zoomed_flag, ..., 0 for none
+
+    field_name2="${5:-none}"         # Field name, used for identifying color variables
+    field_number2="${6:-none}"       # Field numbers starting with 1
+    field_format2="${7:-none}"       # Content of field, e.g "W:#{session_windows} P:#{window_panes}"
+    field_condition2="${8:-none}"    # Condition to toggle color on, client_prefix, window_zoomed_flag, ..., 0 for none
+
+#    status_left_bg="${BRIGHTBLACK}"  # First left status color
+#    status_left_fg="white"
+#    status_line_mode="bold"
+
+    local true_bg1 true_fg1 true_mode1
+    local false_bg1 false_fg1 false_mode1
+    local true_bg2 true_fg2 true_mode2
+    local false_bg2 false_fg2 false_mode2
+    true_bg1=$(eval echo $(echo $`eval echo "${field_name1//-/_}_true_bg"`))
+    true_fg1=$(eval echo $(echo $`eval echo "${field_name1//-/_}_true_fg"`))
+    true_mode1=$(eval echo $(echo $`eval echo "${field_name1//-/_}_true_mode"`))
+
+    false_bg1=$(eval echo $(echo $`eval echo "${field_name1//-/_}_false_bg"`))
+    false_fg1=$(eval echo $(echo $`eval echo "${field_name1//-/_}_false_fg"`))
+    false_mode1=$(eval echo $(echo $`eval echo "${field_name1//-/_}_false_mode"`))
+
+    true_bg2=$(eval echo $(echo $`eval echo "${field_name2//-/_}_true_bg"`))
+    true_fg2=$(eval echo $(echo $`eval echo "${field_name2//-/_}_true_fg"`))
+    true_mode2=$(eval echo $(echo $`eval echo "${field_name2//-/_}_true_mode"`))
+
+    false_bg2=$(eval echo $(echo $`eval echo "${field_name2//-/_}_false_bg"`))
+    false_fg2=$(eval echo $(echo $`eval echo "${field_name2//-/_}_false_fg"`))
+    false_mode2=$(eval echo $(echo $`eval echo "${field_name2//-/_}_false_mode"`))
+
+    local tmp
+    tmp="#{?${field_condition1},"
+        tmp="${tmp}#[bg=${true_bg1} fg=${true_fg1} ${true_mode1}]${field_format1}"
+        if [ "${field_condition2}" != "none" ]
+        then
+            tmp="${tmp}#{?${field_condition2},"
+                tmp="${tmp}#[bg=${true_bg2} fg=${true_bg1} nobold]${left_arrow} "
+                tmp="${tmp}#[bg=${true_bg2} fg=${true_fg2} nobold]${field_format2}"
+                tmp="${tmp}#[bg=${status_bg} fg=${true_bg2} nobold]${left_arrow} "
+            tmp="${tmp},"
+                tmp="${tmp}#[bg=${false_bg2} fg=${true_bg1} nobold]${left_arrow} "
+                tmp="${tmp}#[bg=${false_bg2} fg=${false_fg2} nobold]${field_format2}"
+                tmp="${tmp}#[bg=${status_bg} fg=${false_bg2} nobold]${left_arrow} "
+            tmp="${tmp}}"
+        else
+                tmp="${tmp}#[bg=${status_bg} fg=${true_bg1} nobold]${left_arrow} "
+        fi
+    tmp="${tmp},"
+        tmp="${tmp}#[bg=${false_bg1} fg=${false_fg1} ${false_mode1}]${field_format1}"
+        if [ "${field_condition2}" != "none" ]
+        then
+            tmp="${tmp}#{?${field_condition2},"
+                tmp="${tmp}#[bg=${true_bg2} fg=${status_left_bg} nobold]${left_arrow} "
+                tmp="${tmp}#[bg=${true_bg2} fg=${true_fg2} nobold]${field_format2}"
+                tmp="${tmp}#[bg=${status_bg} fg=${true_bg2} nobold]${left_arrow} "
+            tmp="${tmp},"
+                tmp="${tmp}#[bg=${false_bg2} fg=${status_left_bg} nobold]${left_arrow} "
+                tmp="${tmp}#[bg=${false_bg2} fg=${status_left_fg} nobold]${field_format2}"
+                tmp="${tmp}#[bg=${status_bg} fg=${false_bg2} nobold]${left_arrow} "
+            tmp="${tmp}}"
+        else
+                tmp="${tmp}#[bg=${status_bg} fg=${false_bg1} nobold]${left_arrow} "
+        fi
+    tmp="${tmp}}"
+
+    ${tmux} set -g status-left "${tmp}"
+}
+# End Status Left
+################################################
+
+################################################
+# Begin Window Status
+window_status() {
+    local ws wsf bg fg bgz fgz
+    ws=${1}     # window_status_format, window_status_current_format, ...
+
+    wsf="${ws//-/_}"
+    bg="$(eval echo $(echo $`eval echo "${ws//-/_}_bg"`))"
+    fg="$(eval echo $(echo $`eval echo "${ws//-/_}_fg"`))"
+    bgz="$(eval echo $(echo $`eval echo "${ws//-/_}_zoomed_bg"`))"
+    fgz="$(eval echo $(echo $`eval echo "${ws//-/_}_zoomed_fg"`))"
+
+    local tmp
+    tmp="#{?pane_synchronized,"
+        tmp="${tmp}#{?window_zoomed_flag,"
+            tmp="${tmp}#[bg=${bgz} fg=${status_bg} none]${left_arrow} "
+            tmp="${tmp}#[bg=${bgz} fg=${fgz} ${window_status_current_format_mode}]#(cat ~/.tmux.conf.sh | bash -s ${wsf}) "
+            tmp="${tmp}#[bg=${status_bg} fg=${bgz} none]${left_arrow}"
+            tmp="${tmp}#[bg=${status_bg} fg=${BASE3} none]${left_fletching}"
+        tmp="${tmp},"
+            tmp="${tmp}#[bg=${bg} fg=${status_bg} none]${left_arrow} "
+            tmp="${tmp}#[bg=${bg} fg=${fg} ${window_status_current_format_mode}]#(cat ~/.tmux.conf.sh | bash -s ${wsf}) "
+            tmp="${tmp}#[bg=${status_bg} fg=${bg} none]${left_arrow}"
+            tmp="${tmp}#[bg=${status_bg} fg=${BASE3} none]${left_fletching}"
+        tmp="${tmp}}"
+    tmp="${tmp},"
+        tmp="${tmp}#{?window_zoomed_flag,"
+            tmp="${tmp}#[bg=${bgz} fg=${status_bg} none]${left_arrow} "
+            tmp="${tmp}#[bg=${bgz} fg=${fgz} ${window_status_current_format_mode}]#(cat ~/.tmux.conf.sh | bash -s ${wsf}) "
+            tmp="${tmp}#[bg=${status_bg} fg=${bgz} none]${left_arrow} "
+        tmp="${tmp},"
+            tmp="${tmp}#[bg=${bg} fg=${status_bg} none]${left_arrow} "
+            tmp="${tmp}#[bg=${bg} fg=${fg} ${window_status_current_format_mode}]#(cat ~/.tmux.conf.sh | bash -s ${wsf}) "
+            tmp="${tmp}#[bg=${status_bg} fg=${bg} none]${left_arrow} "
+        tmp="${tmp}}"
+    tmp="${tmp}}"
+
+    ${tmux} set-window-option -g ${ws} "${tmp}"
+}
+
+window_status_format() {
+    # Abbreviate window status titles if needed
+    local wsf
+
+    cat ~/.tmux_config | grep "^config" | grep durga | grep yes > /dev/null 2>&1
+    durga=$?
+
+    nw=$(get_num_windows)
+    #cw=$(get_client_width)
+
+    columns=$(tmux display-message -p '#{client_width}' 2> /dev/null)
+
+    window_status_width=0
+    for win in $(tmux list-windows -F '#{window_name}')
+    do
+        window_status_width=$(( ${window_status_width} + ${#win} + 6 + 2 ))
+    done
+
+    if [ ${window_status_width} -lt $(( ${columns} * 2 / 3 )) ]
+    then
+        window_name_width=100
+    else
+        window_name_width=4
+    fi
+
+    if [ ${durga} -eq 0 ]
+    then
+        wsf="#(cat ~/.tmux.conf.sh | bash -s pane_title host ${window_name_width})"
+    else
+        wsf="#{window_index}:#{=${window_name_width}:window_name}"
+    fi
+
+    echo "${wsf}"
+}
+
+window_status_current_format() {
+    # Keep current window name intact no matter what
+    local wsf
+    cat ~/.tmux_config | grep "^config" | grep durga | grep yes > /dev/null 2>&1
+    durga=$?
+
+    if [ ${durga} -eq 0 ]
+    then
+        wsf="#(cat ~/.tmux.conf.sh | bash -s pane_title host)"
+    else
+        wsf="#{window_index}:#{window_name}"
+    fi
+    echo "${wsf}"
+}
+# End Window Status
+################################################
+
+################################################
+# Begin Toggle Mouse
+toggle_mouse() {
+    local old new
+    if (${tmux} show-options -g -w | grep -q mode-mouse); then
+        old=$(${tmux} show-options -g -w | grep mode-mouse | cut -d' ' -f2)
+        new=""
+
+        if [ "$old" = "on" ] ; then
+            new="off"
+        else
+            new="on"
+        fi
+
+        ${tmux} set-option -g mode-mouse $new \;\
+            set-option -g mouse-resize-pane $new \;\
+            set-option -g mouse-select-pane $new \;\
+            set-option -g mouse-select-window $new \;\
+            display-message "mouse: $new"
+    else
+        old=$(${tmux} show-options -g | grep mouse | head -n 1 | cut -d' ' -f2)
+        new=""
+
+        if [ "$old" = "on" ] ; then
+            new="off"
+        else
+            new="on"
+        fi
+
+        ${tmux} set-option -g mouse $new \;\
+            display-message "mouse: $new"
+    fi
+}
+# End Toggle Mouse
+################################################
+
+################################################
+# Begin Battery
+# Borrowed from https://github.com/gpakosz/.tmux
+battery() {
+    local batt dis percentage discharging charge
+    if [ -x /usr/bin/upower ]
+    then
+        batt=$(upower -d | grep percentage  | tail -1 )
+        dis=$(upower -d | grep state  | tail -1 )
+        percentage=$(echo $batt | awk '{print $NF}' | egrep -o [0-9]+ | head -1) || return
+        discharging=$(echo $dis | grep -qi "discharging" && echo "true" || echo "false")
+    elif [ -x /usr/bin/pmset ]
+    then
+        batt=$(pmset -g batt)
+        dis=${batt}
+        percentage=$(echo $batt | egrep -o [0-9]+% ) || return
+        discharging=$(echo $dis | grep -qi "discharging" && echo "true" || echo "false")
+    else
+        batt=0
+        dis=""
+        percentage="0%"
+        discharging="true"
+    fi
+    charge="${percentage%%%} / 100"
+    # For this to work your terminal must be set to allow blinking text
+    [ ${percentage%%%} -lt 10 ] && mode=" blink" || mode=""
+
+    local battery_bg columns battery_symbol_count battery_symbol_full battery_symbol_empty
+    battery_bg=$1
+    cw=$(get_client_width)
+    if [ "${cw}" == "wide" ]; then
+        battery_symbol_count=15
+    elif [ "${cw}" == "medium" ]; then
+        battery_symbol_count=10
+    elif [ "${cw}" == "narrow" ]; then
+        battery_symbol_count=5
+    else
+        tmux display-message "ERROR"
+    fi
+
+    battery_symbol_full=◼
+    battery_symbol_empty=◻
+
+    if [ x"$discharging" = x"true" ]; then
+        printf "  "
+    else
+        printf "%s " ⚡
+    fi
+
+    local palette count full empty
+    palette="124 160 196 202 208 214 220 226 190 154 118 82 46 40 34"
+    count=$(echo $(echo $palette | wc -w))
+
+    eval set -- "$palette"
+    palette=$(eval echo $(eval echo $(printf "\\$\{\$(expr %s \* $count / $battery_symbol_count)\} " $(seq 1 $battery_symbol_count))))
+
+    full=$(printf %.0f $(awk "BEGIN{print $charge * $battery_symbol_count}"))
+    printf '#[bg=%s]' $battery_bg
+    [ $full -gt 0 ] && printf "#[fg=colour%s${mode}]$battery_symbol_full" $(echo $palette | cut -d' ' -f1-$full)
+    empty=$(($battery_symbol_count - $full))
+    [ $empty -gt 0 ] && printf "#[fg=colour%s]$battery_symbol_empty" $(echo $palette | cut -d' ' -f$((full+1))-$(($full + $empty)))
+}
+# End Battery
+################################################
+
+################################################
+# Begin Time
+# Note:  If no width is provided the printf in combination with the seq 1 1 0
+#        will always produce one leading space.  This should be fixed.
+_datetime() {
+    local width columns string
+    width=${1}
+
+    columns=$(tmux display-message -p '#{client_width}' 2> /dev/null || echo 120)
+    if [ $columns -ge 170 ]; then
+        width=17
+        string=$(date +'%H:%M  %Y-%m-%d')
+    elif [ $columns -ge 120 ]; then
+        width=12
+        string=$(date +'%H:%M %y%m%d')
+    else
+        width=7
+        string=$(date +'  %H:%M')
+    fi
+
+    echo "${string}"
+}
+
+_date() {
+    local width string
+    width=${1}
+    string=$(date +'%Y-%m-%d')
+    echo "$(printf '%.s o' $(seq 1 1 $((${width}-${#string}))) | sed 's/o//g')${string}"
+}
+
+_time() {
+    local width string
+    width=${1}
+    string=$(date +'%H:%M')
+    echo "$(printf '%.s o' $(seq 1 1 $((${width}-${#string}))) | sed 's/o//g')${string}"
+}
+# End Time
+################################################
+
+################################################
+# Begin Weather
+moonphase() {
+    set -x
+    local phasetext phaseglyph moonphase phase type
+    type="${1}"  # text or symbol
+
+    # 🌑 🌒 🌓 🌔 🌕 🌖 🌗 🌘  #
+#    declare -a phases=( "\xf0\x9f\x8c\x91" "\xf0\x9f\x8c\x92" \
+#                        "\xf0\x9f\x8c\x93" "\xf0\x9f\x8c\x94" \
+#                        "\xf0\x9f\x8c\x95" "\xf0\x9f\x8c\x96" \
+#                        "\xf0\x9f\x8c\x97" "\xf0\x9f\x8c\x98")
+
+    declare -a phases=( "🌑 " "🌒 " "🌓 " "🌔 " "🌕 " "🌖 " "🌗 " "🌘 " )
+
+    phasetext=~/.moon-phase-text.txt
+    phaseglyph=~/.moon-phase-glyph.txt
+    moonphase=$(cat ${weather} | grep 'phaseofMoon' | \
+        sed 's@.*:\"\(.*\)\",@\1@')
+
+    case "${moonphase}" in
+        "New")
+            phase=0
+            ;;
+        "Waxing Crescent")
+            phase=1
+            ;;
+        "First Quarter")
+            phase=2
+            ;;
+        "Waxing Gibbous")
+            phase=3
+            ;;
+        "Full")
+            phase=4
+            ;;
+        "Waning Gibbous")
+            phase=5
+            ;;
+        "Third Quarter")
+            phase=6
+            ;;
+        "Waning Crescent")
+            phase=7
+            ;;
+        *)
+            # Leave whatever was here before
+            exit
+            ;;
+    esac
+
+    echo ${phases[phase]} > ${phaseglyph}
+    echo ${moonphase} > ${phasetext}
+    if [ "${type}" == "text" ]
+    then
+        echo "$(cat ${phasetext})  "
+    else
+        echo "$(cat ${phaseglyph})  "
+    fi
+    set +x
+}
+
+stormwatch() {
+    local stale stormwatch
+    stale=${1}
+    # TODO: Convert storm watch to wunderground
+    cat ${weather} | grep '<swa>' > /dev/null 2>&1 && stormwatch="*" || stormwatch=""
+    if [ ${stale} -eq 0 ]
+    then
+        echo "${stormwatch}"
+    else
+        echo "<${stormwatch}>"
+    fi
+}
+
+humidity() {
+    local stale humidity
+    stale=${1}
+    humidity=$(cat ${weather} | grep '\"relative_humidity\"' | \
+        sed 's@.*:\"\(.*\)%\",@\1@' | sed 's/\"//g')
+    if [ ${stale} -eq 0 ]
+    then
+        echo "${humidity}"
+    else
+        echo "<${humidity}>"
+    fi
+}
+
+temperature() {
+    local stale temperature
+    stale=${1}
+    temperature=$(cat ${weather} | grep '\"temp_f\"' | \
+        sed 's@.*:\(.*\),@\1@' | cut -d'.' -f1 | sed 's/\"//g')
+    if [ ${stale} -eq 0 ]
+    then
+        echo "${temperature}"
+    else
+        echo "<${temperature}>"
+    fi
+}
+
+wind() {
+    local stale speed gust wind_degrees wind_abbrev compass
+    stale=${1}
+    speed=$(cat ${weather} | grep '\"wind_mph\"' | \
+        sed 's@.*:\(.*\),@\1@' | cut -d'.' -f1 | sed 's/\"//g')
+    gust=$(cat ${weather} | grep '\"wind_gust_mph\"' | \
+        sed 's@.*:\(.*\),@\1@' | cut -d'.' -f1 | sed 's/\"//g')
+    [ "${gust}" == "N/A" ] && gust="" || gust="(${gust})"
+    compass=('N' 'NNE' 'NE' 'ENE' 'E' 'ESE' 'SE' 'SSE' 'S' 'SSW' 'SW' 'WSW' 'W' 'WNW' 'NW' 'NNW' 'N')
+    wind_degrees=$(cat ${weather} | grep '\"wind_degrees\"' | \
+        sed 's@.*:\(.*\),@\1@' | sed 's/\"//g')
+
+    b=$(( (((wind_degrees*100)/(225))+5)/10 ))
+    wind_abbrev=${compass[${b}]}
+
+    if [ ${stale} -eq 0 ]
+    then
+        echo "${speed}${gust}${wind_abbrev}"
+    else
+        echo "<${speed}${gust}${wind_abbrev}>"
+    fi
+}
+
+weather() {
+    local status datapoint
+    local type zip temp
+    datapoint=${1:-temperature}
+    type=${2}
+    zip="19348"
+    weather=~/.weather
+    astronomy=~/.astronomy
+    rm -f ${foo}
+
+    grep -q STALE ${weather}
+    if [ $? == 1 ]
+    then
+        stale=0
+    else
+        stale=1
+    fi
+
+    case "${datapoint}" in
+        "stormwatch")
+            stormwatch ${stale}
+            ;;
+        "wind")
+            wind ${stale}
+            ;;
+        "humidity")
+            humidity ${stale}
+            ;;
+        "temperature")
+            temperature ${stale}
+            ;;
+        "moonphase")
+            moonphase "${type}" ${stale}
+            ;;
+        *)
+            exit
+            ;;
+    esac
+}
+# End Weather
+################################################
+
+################################################
+# Begin Client Width
+get_client_width() {
+    local columns client_width
+    columns=$(tmux display-message -p '#{client_width}' 2> /dev/null)
+    if [ $columns -ge 170 ]; then
+        client_width="wide"
+    elif [ $columns -ge 120 ]; then
+        client_width="medium"
+    else
+        client_width="narrow"
+    fi
+    echo "${client_width}"
+}
+# End Client Width
+################################################
+
+################################################
+# Begin Get Num Windows
+get_num_windows() {
+    local num_windows
+    num_windows=$(tmux display-message -p '#{session_windows}' 2> /dev/null)
+    echo "${num_windows}"
+}
+# End Get Num Windows
+################################################
+
+################################################
+# Begin Apply color
+apply_color() {
+    BRIGHTYELLOW="#ffcc00"
+    BRIGHTRED="#ff0000"
+    BRIGHTBLACK="#000000"
+    BRIGHTWHITE="#ffffff"
+
+    YELLOW="#b58900"
+    ORANGE="#cb4b16"
+    RED="#dc322f"
+    MAGENTA="#d33682"
+    VIOLET="#6c71c4"
+    BLUE="#268bd2"
+    CYAN="#2aa198"
+    GREEN="#859900"
+
+    if [ "${solarized_mode}" == "light" ]
+    then
+        # Light
+        BASE03="#fdf6e3"
+        BASE02="#eee8d5"
+        BASE01="#93a1a1"
+        BASE00="#839496"
+        BASE0="#657b83"
+        BASE1="#586e75"
+        BASE2="#073642"
+        BASE3="#002b36"
+    else
+        # Dark
+        BASE03="#002b36"
+        BASE02="#073642"
+        BASE01="#586e75"
+        BASE00="#657b83"
+        BASE0="#839496"
+        BASE1="#93a1a1"
+        BASE2="#eee8d5"
+        BASE3="#fdf6e3"
+    fi
+
+    status_bg=${BASE02}
+    status_fg="white"
+
+    left_arrow=''
+    left_fletching=''
+
+    ${tmux} set -g status-bg "${status_bg}"
+    ${tmux} set -g window-status-separator " "
+
+    # pane border
+    local pane_border_fg pane_border_bg
+    local pane_active_border_bg pane_active_border_bg
+    [ "${solarized_mode}" == "light" ] && pane_active_border_fg="${BRIGHTBLACK}" || pane_active_border_fg="white"
+    [ "${solarized_mode}" == "light" ] && pane_border_fg="white" || pane_border_fg="${BRIGHTBLACK}"
+
+    ${tmux} set-option -g pane-border-fg "${pane_border_fg}"
+    ${tmux} set-option -g pane-active-border-fg "${pane_active_border_fg}"
+
+    ##################
+    # Status Right
+    status_right 1
+
+    ##################
+    # Status Left
+    status_left_1_false_bg="${BRIGHTBLACK}"
+    status_left_1_false_fg="white"
+    status_left_1_false_mode="bold"
+    status_left_1_true_fg="${BRIGHTBLACK}"
+    [ "${solarized_mode}" == "light" ] && status_left_1_true_fg="white" || status_left_1_true_fg="${BRIGHTBLACK}"
+    [ "${solarized_mode}" == "light" ] && status_left_1_true_bg="yellow" || status_left_1_true_bg="${BRIGHTYELLOW}"
+    status_left_1_true_mode="bold"
+
+    status_left_2_false_bg="${status_bg}"
+    status_left_2_false_fg="white"
+    status_left_2_false_mode="none"
+    status_left_2_true_bg="${BRIGHTYELLOW}"
+    status_left_2_true_fg="white"
+    status_left_2_true_mode="bold"
+
+    status_left "status-left-1" "1" " [#{session_name}] " "client_prefix" \
+#                "status-left-2" "2" " " "window_zoomed_flag"
+
+    ##################
+    # Window Status
+    window_status_current_format_bg="blue"
+    window_status_current_format_fg="white"
+    window_status_current_format_mode="bold"
+    window_status_current_format_zoomed_bg="yellow"
+    window_status_current_format_zoomed_fg="white"
+    window_status_current_format_zoomed_mode="bold"
+
+    window_status_format_bg="${BASE01}"
+    window_status_format_fg="${BRIGHTBLACK}"
+    window_status_format_mode="bold"
+    window_status_format_zoomed_bg="${window_status_format_bg}"
+    window_status_format_zoomed_fg="${window_status_format_fg}"
+    window_status_format_zoomed_mode="${window_status_format_mode}"
+
+    window_status "window-status-current-format"
+    window_status "window-status-format"
+
+    ##################
+    # Other
+    # Need to make mouse functions work on nested tmux instances too
+    # May not be possible since the lower level tmux will intercept mouse
+    # commands.  Additionally pbcopy and pbpaste are macos commands so 
+    # will need complex cross interaction between the two tmux'es.
+    #toggle_mouse
+    #${tmux} bind-key y "run ${tmux} save-buffer - | pbcopy"
+    #${tmux} bind-key m run "cat ~/.tmux.conf.sh | bash -s toggle_mouse"
+
+    # Turn off mouse interaction for now
+    ${tmux} set-option -g mouse off
+}
+# End Apply Color
+################################################
+
+################################################
+# End Apply General
+apply_general() {
+    # Use pmset as an indicator that this is on macos and that tmux is running locally
+    which pmset > /dev/null 2>&1
+    if [ $is_local -eq 0 ]
+    then
+        ${tmux} set-option -g prefix C-s
+    else
+        ${tmux} set-option -g prefix C-q
+    fi
+
+    ${tmux} set-option -g history-limit 100000              # History to almost the beginning of time
+
+    ${tmux} set-option -g set-titles on                     # Set title of terminal window
+    ${tmux} set-option -g set-titles-string "#S"            # to the name to the session
+
+    ${tmux} bind-key n next-window
+    ${tmux} bind-key l last-window                           # Select previous window
+
+    ${tmux} bind-key C-h resize-pane -L 5                   # Move pane divider left
+    ${tmux} bind-key C-j resize-pane -D 5                   # Move pane divider down
+    ${tmux} bind-key C-k resize-pane -U 5                   # Move pane divider up
+    ${tmux} bind-key C-l resize-pane -R 5                   # Move pane divider right
+
+    ${tmux} set-option -g status-justify left               # Left-justify the window list
+    ${tmux} set-option -g status-left-length 30             # Allow for longer session names
+    ${tmux} set-option -g status-right-length 100           # Lots of crap go here
+
+    # TODO:  Gnome Terminal on Ubuntu doesn't like xterm-256color
+    ${tmux} set-option -g default-terminal "xterm-256color"
+
+    ${tmux} set-option -g base-index 1                      # Window numbering starts at 1
+    ${tmux} set-window-option -g pane-base-index 1          # Pane numbering starts at 1
+    ${tmux} set-option -g renumber-windows on               # Keep windows sequentially numbered
+
+    # Recently deprecated
+    #set-window-option -g utf8 on                    # Enable UTF-8
+    #set-option -g status-utf8 on                    # Enable UTF-8 in the status line
+
+    ${tmux} bind-key R source ~/.tmux.conf \; display-message "Configuration reloaded"
+    #bind-key R source ~/.tmux.conf \; display-message "Configuration reloaded"
+    #source ~/.tmux-solarized/tmux-color.conf             # Read the solarized related settings
+
+    ${tmux} bind-key S set-window-option synchronize-panes  # Input goes to all panes simultaneously à la cssh
+
+    ${tmux} bind-key P move-window -t lru \; switch-client -t work
+    ${tmux} bind-key O move-window -t work \; switch-client -t lru
+    ${tmux} bind-key M set-window-option monitor-activity off \; display-message "Enable monitor-activity on window #{window_index}:#{window_name} #{?monitor_activity,<--,uuu}"
+    #bind-key M set-window-option monitor-activity on \; display-message "Enable monitor-activity on window #{window_index}:#{window_name}"
+    #bind-key m set-window-option monitor-activity off \; display-message "Disable monitor-activity on window #{window_index}:#{window_name}"
+
+    # vim style copy paste
+    ${tmux} set-window-option -g mode-keys vi               # vim-style movement
+    # in normal tmux mode
+    ${tmux} bind-key Escape copy-mode                       # Starts copy mode.
+    ${tmux} bind-key p paste-buffer                         # Paste the latest buffer
+
+    # in copy mode
+    ${tmux} bind-key -t vi-copy v begin-selection           # Begin a selection
+    ${tmux} bind-key -t vi-copy y copy-selection            # Yank
+    ${tmux} bind-key -t vi-copy V rectangle-toggle          # Line / column selection toggle
+    ${tmux} bind-key -t vi-copy Y copy-end-of-line          # ^1
+    ${tmux} bind-key + delete-buffer
+
+    # choose-tree format
+    ${tmux} bind-key s choose-tree -u -W "#{window_index}:#{window_name} (#{window_panes}) #{?window_active,✔,}"
+    ${tmux} bind-key x confirm-before -p "kill-pane #P? (y/n)" kill-pane
+
+    # Screen saver
+    #set-option -g lock-after-time 300
+    #set-option -g lock-command "/home/ljonsson/cmatrix-1.2a/cmatrix -s -b"
+
+    #bind-key C-t run "tmux last-pane || tmux last-window || tmux new-window"
+
+    # message line
+    ${tmux} set-option -g message-bg "BRIGHTBLACK"
+    ${tmux} set-option -g message-fg "BRIGHTWHITE"
+}
+# End Apply General
+################################################
+
+################################################
+# Begin get_nestedness
+get_nestedness() {
+    cat ~/.tmux_config | grep "^config" | grep local | grep yes > /dev/null 2>&1
+    local=$?
+    if [ ${local} -eq 0 ]
+    then
+        is_local=0     # 0 = local;  1 = remote
+    else
+        is_local=1
+    fi
+}
+# End get_nestedness
+################################################
+
+################################################
+# Begin get_weather_data
+function get_weather_data() {
+    [ -x /usr/bin/wget ] && wget=/usr/bin/wget
+    [ -x /usr/local/bin/wget ] && wget=/usr/local/bin/wget
+
+    [ -x /bin/date ] && date=/bin/date
+    [ -x /usr/local/opt/coreutils/libexec/gnubin/date ] && date=/usr/local/opt/coreutils/libexec/gnubin/date
+
+    [ -x /bin/touch ] && touch=/bin/touch
+    [ -x /usr/local/opt/coreutils/libexec/gnubin/touch ] && touch=/usr/local/opt/coreutils/libexec/gnubin/touch
+
+    [ -x /bin/mktemp ] && mktemp=/bin/mktemp
+    [ -x /usr/local/opt/coreutils/libexec/gnubin/mktemp ] && mktemp=/usr/local/opt/coreutils/libexec/gnubin/mktemp
+
+    #log=/tmp/weathercall
+    log=/dev/null
+
+    wunderkey=$(cat ~/.wunderground | grep ^key | awk '{print $NF}')
+    wunderstate=$(cat ~/.wunderground | grep ^state | awk '{print $NF}')
+    wundercity=$(cat ~/.wunderground | grep ^city | awk '{print $NF}')
+
+    weather_data=~/.weather
+    weather_url="http://api.wunderground.com/api/${wunderkey}/conditions/astronomy/q/${wunderstate}/${wundercity}.json"
+    weather_timeout='6minutes ago'
+
+    now=$(date +'%Y%m%d-%H:%M:%S')
+
+    timestamp=$(${mktemp} -q)
+
+    ${touch} --date "${weather_timeout}" ${timestamp} > /dev/null 2>&1
+    if [ ${weather_data} -ot ${timestamp} ]
+    then
+        echo "${now} | Calling out to weather service" | tee -a ${log}
+
+        ${wget} -q ${weather_url} -O ${timestamp}
+        grep -q "response" ${timestamp}
+        status=$?
+
+        if [ $status -eq 0 ]
+        then
+            # wget succeeded, keep this result
+            echo "${now} |     Keeping result" | tee -a ${log}
+            echo "${now} |     $(grep "\"observation_time\"" ${timestamp} | awk -F':' '{$1=""; print}')" >> ${log}
+            mv ${timestamp} ${weather_data}
+        else
+            # wget failed make sure we use previous result but flag as stale somehow
+            echo "${now} |     Failed to get data" | tee -a ${log}
+            timestamp2=$(mktemp -q)
+            # Keep current timestamp so we don't have to wait the full timeout to get refreshed
+            touch --reference ${weather_data} ${timestamp2}
+            grep -q STALE ${weather_data} || echo STALE >> ${weather_data}
+            touch --reference ${timestamp2} ${weather_data}
+            rm -f ${timestamp2} > /dev/null 2>&1
+        fi
+    else
+        echo "${now} | Already have recent data in ${weather_data} $(grep "\"observation_time\"" ${weather_data} | awk -F':' '{$1=""; print}')" | tee -a ${log}
+    fi
+    rm -f ${timestamp} > /dev/null 2>&1
+}
+# End get_weather_data
+################################################
+
+################################################
+# Begin Apply
+apply() {
+    set
+    tmux="tmux"
+
+    solarized_mode=$(readlink ~/.tmux-solarized | awk -F '-' '{print $NF}')
+    get_nestedness
+    apply_general
+    apply_color
+}
+# End Apply
+################################################
+
+$@

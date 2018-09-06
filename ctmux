@@ -1,0 +1,118 @@
+#!/bin/bash
+
+function readargs {
+    echo > /dev/null 2>&1
+    while [ $? -eq 0 ]
+    do
+        if [ "${1}" == "--cluster-config" ]
+        then
+            shift
+            configfile=${1}
+        elif [ "${1}" == "--window-name" ]
+        then
+            # Set the tmux window name in the status bar
+            # Default: ctmux
+            shift
+            windowname="${1}"
+        elif [ "${1}" == "--username" ]
+        then
+            # Prepend "${username}@" to each host
+            # Default: none
+            shift
+            username="${1}"
+        elif [ "${1}" == "--privkey" ]
+        then
+            # Add -i ${privkey} to the ssh commandline
+            # Default: none
+            shift
+            privkey="${1}"
+        elif [ "${1}" == "--dedup" ]
+        then
+            # Not yet implemented
+            shift
+            dedup=${1}
+        else
+            arglist="${arglist} ${1}"
+        fi
+        shift
+    done
+}
+
+function readconfig {
+    name=$1
+    found=1
+    while read line
+    do
+        echo ${line} | grep "^${name} " > /dev/null 2>&1
+        if [ $? -eq 0 ]
+        then
+            echo $line | awk '{$1=""; print $0}'
+            found=0
+        fi
+    done < ${configfile}
+    return ${found}
+}
+
+function expandargs {
+    while (("$#"))
+    do
+        r=$(readconfig $1) && servers="${servers} ${r}" || servers="${servers} $1"
+        shift
+    done
+}
+
+#tmux="/usr/local/bin/tmux"
+#tmux="/home/jonssl/tmux/bin/tmux"
+tmux="/home/jonssl/opt/tmux/bin/tmux"
+order=""
+servers=""
+arglist=""
+configfile=~/.csshcluster
+windowname="ctmux"
+username=""
+privkey=""
+
+[ $(${tmux} list-panes | wc -l) -gt 1 ] && echo "Don't do this here" && exit 1
+
+readargs $@
+expandargs ${arglist}
+a="${servers}"
+servers=""
+expandargs ${a}
+
+i=0
+for server in ${servers}
+do
+    set -x
+    pane=$(echo $order | awk '{print $1}')
+    order=$(echo $order | awk '{$1=""; print $0}')
+    # set HISTIGNORE=" *" to exclude the following ssh commands
+    # from the bash history.  Note the ' ' in front of ssh.
+
+    if [ ${i} -gt 0 ]
+    then
+        ${tmux} split-window -h -p 50
+        ${tmux} select-layout tiled
+    fi
+
+    if [ -z ${privkey} ]
+    then
+        sshcommand="ssh -o StrictHostKeyChecking=false"
+    else
+        sshcommand="ssh -o StrictHostKeyChecking=false -i ${privkey}"
+    fi
+
+    if [ -z ${username} ]
+    then
+        ${tmux} send-keys " ${sshcommand} ${server}" C-m
+    else
+        ${tmux} send-keys " ${sshcommand} ${username}@${server}" C-m
+    fi
+
+    i=$(( i+1 ))
+done
+
+${tmux} set-window-option synchronize-panes
+${tmux} rename-window "$(echo $arglist | awk '{print $1}')"
+${tmux} select-pane -t 1
+

@@ -1,0 +1,8 @@
+alias vi="vim"
+alias g="git"
+alias splunk="sudo su - splunk"
+alias listen="netstat -an | grep 'LISTEN '"
+alias less="/usr/share/vim/vim72/macros/less.sh"
+alias ctmux="/home/jonssl/git/jonssl/dot/ctmux"
+alias bar="tmux attach -d"
+alias treet="tree --timefmt '%Y%m%d %H:%M:%S'"
